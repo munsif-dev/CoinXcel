@@ -13,37 +13,37 @@ pipeline {
     stages {
         stage('Initialize') {
             steps {
-                sh 'echo "Starting Build"'
+                bat 'echo Starting Build'
             }
         }
 
         stage('Clean') {
             steps {
-                sh 'mvn clean'
+                bat 'mvn clean'
             }
         }
 
         stage('Compile') {
             steps {
-                sh 'mvn compile'
+                bat 'mvn compile'
             }
         }
 
         stage('Test') {
             steps {
-                sh 'mvn test'
+                bat 'mvn test'
             }
         }
 
         stage('Package') {
             steps {
-                sh 'mvn package'
+                bat 'mvn package'
             }
         }
 
         stage('Deploy') {
             steps {
-                sh 'echo "Deploying application"'
+                bat 'echo Deploying application'
                 // Add deployment steps here
             }
         }
@@ -51,15 +51,15 @@ pipeline {
 
     post {
         success {
-            sh 'echo "Build succeeded"'
+            bat 'echo Build succeeded'
         }
 
         failure {
-            sh 'echo "Build failed"'
+            bat 'echo Build failed'
         }
 
         always {
-            sh 'echo "Cleaning up..."'
+            bat 'echo Cleaning up...'
             cleanWs()
         }
     }
