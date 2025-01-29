@@ -24,7 +24,9 @@ public class JwtTokenValidator extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
-        return path.equals("/") || path.startsWith("/public");
+        boolean skipFilter = path.equals("/") || path.startsWith("/auth/");
+        System.out.println("Should not filter: " + skipFilter + " for path: " + path);
+        return skipFilter;
     }
 
     @Override
