@@ -2,8 +2,8 @@ pipeline {
     agent any
 
     tools {
-        maven 'M3' // Make sure this matches the name of Maven in your Jenkins configuration
-        jdk 'JDK' // Make sure this matches the name of JDK in your Jenkins configuration
+        maven 'M3' // Ensure this matches the name of Maven in your Jenkins configuration
+        jdk 'JDK' // Ensure this matches the name of JDK in your Jenkins configuration
     }
 
     environment {
@@ -21,54 +21,63 @@ pipeline {
     stages {
         stage('Initialize') {
             steps {
-                bat 'echo Starting Build'
+                // Using WSL for echo command
+                sh 'echo Starting Build'
             }
         }
 
         stage('Clean') {
             steps {
-                bat 'mvn clean'
+                // Running Maven clean in WSL (Linux shell)
+                sh 'mvn clean'
             }
         }
 
         stage('Compile') {
             steps {
-                bat 'mvn compile'
+                // Running Maven compile in WSL (Linux shell)
+                sh 'mvn compile'
             }
         }
 
         stage('Test') {
             steps {
-                bat 'mvn test'
+                // Running Maven test in WSL (Linux shell)
+                sh 'mvn test'
             }
         }
 
         stage('Package') {
             steps {
-                bat 'mvn package'
+                // Running Maven package in WSL (Linux shell)
+                sh 'mvn package'
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                bat 'docker build -t coinxcel .'
+                // Using WSL to build the Docker image
+                sh 'docker build -t coinxcel .'
             }
         }
+
         stage('Build & Push Docker Images') {
             steps {
                 script {
-                    bat "docker build -t ${REPO_NAME}/coinxcel-server ./backend"
-                    bat "docker build -t ${REPO_NAME}/coinxcel-client ./frontend"
-                    bat "docker login -u $DOCKER_HUB_USER -p $DOCKER_HUB_PASS"
-                    bat "docker push ${REPO_NAME}/coinxcel-server"
-                    bat "docker push ${REPO_NAME}/coinxcel-client"
+                    // Using WSL to build Docker images and push to DockerHub
+                    sh "docker build -t ${REPO_NAME}/coinxcel-server ./backend"
+                    sh "docker build -t ${REPO_NAME}/coinxcel-client ./frontend"
+                    sh "docker login -u $DOCKER_HUB_USER -p $DOCKER_HUB_PASS"
+                    sh "docker push ${REPO_NAME}/coinxcel-server"
+                    sh "docker push ${REPO_NAME}/coinxcel-client"
                 }
             }
         }
 
         stage('Provision Infrastructure with Terraform') {
             steps {
-                bat '''
+                // Using WSL to run Terraform commands
+                sh '''
                 cd terraform
                 terraform init
                 terraform apply -auto-approve
@@ -78,7 +87,8 @@ pipeline {
 
         stage('Configure & Deploy with Ansible') {
             steps {
-                bat '''
+                // Using WSL to run Ansible playbook
+                sh '''
                 cd ansible
                 ansible-playbook -i inventory deploy.yml
                 '''
@@ -88,15 +98,18 @@ pipeline {
 
     post {
         success {
-            bat 'echo Build succeeded'
+            // Success message using WSL shell
+            sh 'echo Build succeeded'
         }
 
         failure {
-            bat 'echo Build failed'
+            // Failure message using WSL shell
+            sh 'echo Build failed'
         }
 
         always {
-            bat 'echo Cleaning up...'
+            // Cleanup using WSL shell
+            sh 'echo Cleaning up...'
             cleanWs()
         }
     }
