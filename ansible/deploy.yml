@@ -1,0 +1,48 @@
+- name: Deploy Database
+  hosts: database
+  tasks:
+    - name: Install MySQL
+      become: true
+      apt:
+        name: mysql-server
+        state: present
+
+    - name: Start MySQL Service
+      become: true
+      service:
+        name: mysql
+        state: started
+
+- name: Deploy Backend
+  hosts: backend
+  tasks:
+    - name: Install Docker
+      become: true
+      apt:
+        name: docker.io
+        state: present
+
+    - name: Run Backend Container
+      become: true
+      shell: |
+        docker run -d -p 8080:8080 --name backend \
+        -e DB_HOST=<DATABASE_IP> \
+        -e DB_USER=root \
+        -e DB_PASS=root \
+        munsifahamed/coinxcel-server:latest
+
+- name: Deploy Frontend
+  hosts: frontend
+  tasks:
+    - name: Install Docker
+      become: true
+      apt:
+        name: docker.io
+        state: present
+
+    - name: Run Frontend Container
+      become: true
+      shell: |
+        docker run -d -p 3000:3000 --name frontend \
+        -e BACKEND_URL=http://<BACKEND_IP>:8080 \
+        munsifahamed/coinxcel-client:latest
