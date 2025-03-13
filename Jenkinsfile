@@ -13,6 +13,10 @@ pipeline {
         DOCKER_HUB_PASS = credentials('dockerhub-credentials')
         AWS_CREDENTIALS = credentials('aws-credentials')
         BACKEND_REPO = 'https://github.com/munsif-dev/CoinXcel.git'
+        MYSQL_Credentials = credentials('mysql-credentials')
+        MYSQL_USER = credentials('mysql-credentials_USR')  // MySQL username
+        MYSQL_PASS = credentials('mysql-credentials_PSW')  // MySQL password
+        MYSQL_HOST = '3.84.235.189'                         //credentials('mysql-ec2')  // MySQL host
     }
 
     triggers {
@@ -59,8 +63,9 @@ pipeline {
         stage('Build & Push Docker Image') {
             steps {
                 script {
-                    // Build the Docker image for the backend
-                    sh "docker build -t ${REPO_NAME}/coinxcel-server ."
+                    sh """
+    docker build --build-arg MYSQL_HOST=${MYSQL_HOST} --build-arg MYSQL_USER=${MYSQL_USER} --build-arg MYSQL_PASS=${MYSQL_PASS} -t ${REPO_NAME}/coinxcel-server .
+"""
                     // Log in to Docker Hub and push the image
                     sh "docker login -u $DOCKER_HUB_USER -p $DOCKER_HUB_PASS"
                     sh "docker push ${REPO_NAME}/coinxcel-server"
