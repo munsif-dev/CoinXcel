@@ -3,7 +3,7 @@ provider "aws" {
 }
 
 resource "aws_instance" "db_instance" {
-  ami           = "ami-0c55b159cbfafe1f0"  # Update with a valid AMI
+  ami           = "ami-0c55b159cbfafe1f0"  
   instance_type = "t2.micro"
   key_name      = "your-key-pair"
   tags = {

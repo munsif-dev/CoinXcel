@@ -1,0 +1,46 @@
+version: "3.8"
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: mysql-server
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: coinxcel
+      MYSQL_USER: user
+      MYSQL_PASSWORD: userpassword
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - coinxcel-net
+
+  springboot:
+    build: .
+    container_name: springboot-app
+    ports:
+      - "8080:8000"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/coinxcel
+      SPRING_DATASOURCE_USERNAME: user
+      SPRING_DATASOURCE_PASSWORD: userpassword
+    depends_on:
+      - mysql
+    networks:
+      - coinxcel-net
+
+  frontend:
+    build: ../CoinXcelClient # Path to the frontend folder containing the Dockerfile
+    container_name: frontend-app
+    ports:
+      - "3000:3000" # Expose frontend on port 3000
+    networks:
+      - coinxcel-net
+
+networks:
+  coinxcel-net:
+    driver: bridge
+
+volumes:
+  mysql-data:

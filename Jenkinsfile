@@ -2,16 +2,18 @@ pipeline {
     agent any
 
     tools {
-        maven 'M3' // Ensure this matches the name of Maven in your Jenkins configuration
-        jdk 'JDK' // Ensure this matches the name of JDK in your Jenkins configuration
+        maven 'M3' 
+        jdk 'JDK' 
     }
 
     environment {
         JAVA_HOME = "${tool 'JDK'}"
-        REPO_NAME = 'munsifahamed'  // Your DockerHub repository name
-        DOCKER_HUB_USER = credentials('dockerhub-credentials')  // Store DockerHub credentials in Jenkins
-        DOCKER_HUB_PASS = credentials('dockerhub-credentials')  // Store DockerHub credentials in Jenkins
-        AWS_CREDENTIALS = credentials('aws-credentials')  // Store AWS credentials in Jenkins
+        REPO_NAME = 'munsifahamed' 
+        DOCKER_HUB_USER = credentials('dockerhub-credentials') 
+        DOCKER_HUB_PASS = credentials('dockerhub-credentials')  
+        AWS_CREDENTIALS = credentials('aws-credentials')  
+        FRONTEND_REPO = 'https://github.com/munsif-dev/CoinXcelClient.git'
+        BACKEND_REPO = 'https://github.com/munsif-dev/CoinXcel.git'
     }
 
     triggers {
