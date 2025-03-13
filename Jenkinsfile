@@ -13,7 +13,7 @@ pipeline {
         DOCKER_HUB_PASS = credentials('dockerhub-credentials')
         AWS_CREDENTIALS = credentials('aws-credentials')
         BACKEND_REPO = 'https://github.com/munsif-dev/CoinXcel.git'
-        MYSQL_Credentials = credentials('mysql-credentials')
+       
         MYSQL_USER = credentials('mysql-credentials_USR')  // MySQL username
         MYSQL_PASS = credentials('mysql-credentials_PSW')  // MySQL password
         MYSQL_HOST = '3.84.235.189'                         //credentials('mysql-ec2')  // MySQL host
