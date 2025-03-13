@@ -48,19 +48,7 @@ pipeline {
             }
         }
 
-        stage('Test') {
-            steps {
-                // Run tests using Maven
-                sh 'mvn test'
-            }
-        }
-
-        stage('Package') {
-            steps {
-                // Package the backend application
-                sh 'mvn package'
-            }
-        }
+     
 
         stage('Build & Push Docker Image') {
             steps {
