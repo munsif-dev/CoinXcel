@@ -1,42 +1,31 @@
 provider "aws" {
-  region = "us-east-1"
+  region = "us-west-2"  # Specify your region
 }
 
-resource "aws_instance" "db_instance" {
-  ami           = "ami-0c55b159cbfafe1f0"  
+resource "aws_instance" "springboot_instance" {
+  ami           = "ami-xxxxxxxxxxxxxxxxx"  # Replace with your AMI
   instance_type = "t2.micro"
-  key_name      = "your-key-pair"
+  key_name      = "your-key-pair-name"     # Replace with your SSH key name
+
   tags = {
-    Name = "coinxcel-database"
+    Name = "SpringBootInstance"
   }
 }
 
-resource "aws_instance" "backend_instance" {
-  ami           = "ami-0c55b159cbfafe1f0"
+resource "aws_instance" "mysql_instance" {
+  ami           = "ami-xxxxxxxxxxxxxxxxx"  # Replace with your AMI
   instance_type = "t2.micro"
-  key_name      = "your-key-pair"
+  key_name      = "your-key-pair-name"     # Replace with your SSH key name
+
   tags = {
-    Name = "coinxcel-backend"
+    Name = "MySQLInstance"
   }
 }
 
-resource "aws_instance" "frontend_instance" {
-  ami           = "ami-0c55b159cbfafe1f0"
-  instance_type = "t2.micro"
-  key_name      = "your-key-pair"
-  tags = {
-    Name = "coinxcel-frontend"
-  }
+output "springboot_instance_ip" {
+  value = aws_instance.springboot_instance.public_ip
 }
 
-output "db_ip" {
-  value = aws_instance.db_instance.public_ip
-}
-
-output "backend_ip" {
-  value = aws_instance.backend_instance.public_ip
-}
-
-output "frontend_ip" {
-  value = aws_instance.frontend_instance.public_ip
+output "mysql_instance_ip" {
+  value = aws_instance.mysql_instance.public_ip
 }

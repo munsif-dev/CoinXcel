@@ -2,83 +2,81 @@ pipeline {
     agent any
 
     tools {
-        maven 'M3' 
-        jdk 'JDK' 
+        maven 'M3'
+        jdk 'JDK'
     }
 
     environment {
         JAVA_HOME = "${tool 'JDK'}"
-        REPO_NAME = 'munsifahamed' 
-        DOCKER_HUB_USER = credentials('dockerhub-credentials') 
-        DOCKER_HUB_PASS = credentials('dockerhub-credentials')  
-        AWS_CREDENTIALS = credentials('aws-credentials')  
-        FRONTEND_REPO = 'https://github.com/munsif-dev/CoinXcelClient.git'
+        REPO_NAME = 'munsifahamed'
+        DOCKER_HUB_USER = credentials('dockerhub-credentials')
+        DOCKER_HUB_PASS = credentials('dockerhub-credentials')
+        AWS_CREDENTIALS = credentials('aws-credentials')
         BACKEND_REPO = 'https://github.com/munsif-dev/CoinXcel.git'
     }
 
     triggers {
-        githubPush()
+        githubPush()  // Trigger the pipeline on each commit to the backend repository
     }
 
     stages {
         stage('Initialize') {
             steps {
-                // Using WSL for echo command
+                // Log that the pipeline has started
                 sh 'echo Starting Build'
+            }
+        }
+
+        stage('Clone Repository') {
+            steps {
+                // Clone the backend repository
+                git url: "${BACKEND_REPO}", branch: 'main'
             }
         }
 
         stage('Clean') {
             steps {
-                // Running Maven clean in WSL (Linux shell)
+                // Clean previous builds using Maven
                 sh 'mvn clean'
             }
         }
 
         stage('Compile') {
             steps {
-                // Running Maven compile in WSL (Linux shell)
+                // Compile the backend project using Maven
                 sh 'mvn compile'
             }
         }
 
         stage('Test') {
             steps {
-                // Running Maven test in WSL (Linux shell)
+                // Run tests using Maven
                 sh 'mvn test'
             }
         }
 
         stage('Package') {
             steps {
-                // Running Maven package in WSL (Linux shell)
+                // Package the backend application
                 sh 'mvn package'
             }
         }
 
-        stage('Build Docker Image') {
-            steps {
-                // Using WSL to build the Docker image
-                sh 'docker build -t coinxcel .'
-            }
-        }
-
-        stage('Build & Push Docker Images') {
+        stage('Build & Push Docker Image') {
             steps {
                 script {
-                    // Using WSL to build Docker images and push to DockerHub
-                    sh "docker build -t ${REPO_NAME}/coinxcel-server ./backend"
-                    sh "docker build -t ${REPO_NAME}/coinxcel-client ./frontend"
+                    // Build the Docker image for the backend
+                    sh "docker build -t ${REPO_NAME}/coinxcel-server ."
+                    // Log in to Docker Hub and push the image
                     sh "docker login -u $DOCKER_HUB_USER -p $DOCKER_HUB_PASS"
                     sh "docker push ${REPO_NAME}/coinxcel-server"
-                    sh "docker push ${REPO_NAME}/coinxcel-client"
                 }
             }
         }
 
-        stage('Provision Infrastructure with Terraform') {
+        stage('Provision EC2 Instances with Terraform') {
             steps {
-                // Using WSL to run Terraform commands
+                // Run Terraform to provision EC2 instances, or update them if already existing
                 sh '''
                 cd terraform
                 terraform init
@@ -87,9 +85,19 @@ pipeline {
             }
         }
 
-        stage('Configure & Deploy with Ansible') {
+        stage('Install Docker on EC2 Instances') {
             steps {
-                // Using WSL to run Ansible playbook
+                // Install Docker on the EC2 instances using Ansible
+                sh '''
+                cd ansible
+                ansible-playbook -i inventory install-docker.yml
+                '''
+            }
+        }
+
+        stage('Deploy to EC2 Instances') {
+            steps {
+                // Deploy the Spring Boot Docker container to the EC2 instance
                 sh '''
                 cd ansible
                 ansible-playbook -i inventory deploy.yml
@@ -100,18 +108,17 @@ pipeline {
 
     post {
         success {
-            // Success message using WSL shell
+            // Log success message
             sh 'echo Build succeeded'
         }
 
         failure {
-            // Failure message using WSL shell
+            // Log failure message
             sh 'echo Build failed'
         }
 
         always {
-            // Cleanup using WSL shell
-            sh 'echo Cleaning up...'
+            // Cleanup workspace after the build
             cleanWs()
         }
     }
