@@ -60,8 +60,8 @@ pipeline {
                     // SSH into your EC2 instance and pull the latest Docker image
                     sshagent(['aws-credentials']) {
                         sh '''
-                            ssh -o StrictHostKeyChecking=no ec2-user@${HOST} "docker pull your-dockerhub-username/springboot-app:latest"
-                            ssh -o StrictHostKeyChecking=no ec2-user@${HOST} "docker-compose -f /path/to/docker-compose.yml up -d"
+                            ssh -o StrictHostKeyChecking=no ubuntu@${HOST} "docker pull $DOCKER_HUB_USER/springboot-app:latest"
+                            ssh -o StrictHostKeyChecking=no ubuntu@${HOST} "docker-compose -f docker-compose.yml up -d"
                         '''
                     }
                 }

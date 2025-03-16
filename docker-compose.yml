@@ -19,6 +19,7 @@ services:
   springboot:
     build: .
     container_name: springboot-app
+    image: munsifahamed/springboot-app:latest
     ports:
       - "8080:8080"
     environment:
