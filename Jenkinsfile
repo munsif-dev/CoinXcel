@@ -8,9 +8,8 @@ pipeline {
 
     environment {
         JAVA_HOME = "${tool 'JDK'}"  // Set JAVA_HOME to the JDK tool
-        REPO_NAME = 'munsifahamed'
-        
-        DOCKER_HUB_USER = credentials('dockerhub-credentials')  // DockerHub username
+                
+        DOCKER_HUB_USER = 'munsifahamed' // DockerHub username
         DOCKER_HUB_PASS = credentials('dockerhub-credentials')  // DockerHub password
         AWS_CREDENTIALS = credentials('aws-credentials')  // AWS credentials for EC2
         COINXCEL_REPO = 'https://github.com/munsif-dev/CoinXcel.git'  // GitHub repository URL
