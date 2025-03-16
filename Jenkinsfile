@@ -9,6 +9,7 @@ pipeline {
     environment {
         JAVA_HOME = "${tool 'JDK'}"  // Set JAVA_HOME to the JDK tool
         REPO_NAME = 'munsifahamed'
+        
         DOCKER_HUB_USER = credentials('dockerhub-credentials')  // DockerHub username
         DOCKER_HUB_PASS = credentials('dockerhub-credentials')  // DockerHub password
         AWS_CREDENTIALS = credentials('aws-credentials')  // AWS credentials for EC2
@@ -40,13 +41,16 @@ pipeline {
                     // Build the Spring Boot app image using docker-compose (from the docker-compose.yml file)
                     sh 'docker-compose -f docker-compose.yml build springboot'
 
-                    // Login to DockerHub
-                    sh """
-                        echo $DOCKER_HUB_PASS | docker login -u $DOCKER_HUB_USER --password-stdin
-                    """
+                  
+                     // Securely login to DockerHub using credentials stored in Jenkins
+                    withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_HUB_USER', passwordVariable: 'DOCKER_HUB_PASS')]) {
+                        sh '''
+                            echo $DOCKER_HUB_PASS | docker login -u $DOCKER_HUB_USER --password-stdin
+                        '''
+                    }
 
                     // Push the image to DockerHub
-                    sh 'docker push your-dockerhub-username/springboot-app:latest'
+                    sh 'docker push $DOCKER_HUB_USER/springboot-app:latest'
                 }
             }
         }
