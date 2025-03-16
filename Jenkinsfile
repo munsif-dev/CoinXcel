@@ -2,123 +2,85 @@ pipeline {
     agent any
 
     tools {
-        maven 'M3'
-        jdk 'JDK'
+        maven 'M3'  // Maven tool name configured in Jenkins
+        jdk 'JDK'   // JDK tool name configured in Jenkins
     }
 
     environment {
-        JAVA_HOME = "${tool 'JDK'}"
+        JAVA_HOME = "${tool 'JDK'}"  // Set JAVA_HOME to the JDK tool
         REPO_NAME = 'munsifahamed'
-        DOCKER_HUB_USER = credentials('dockerhub-credentials')
-        DOCKER_HUB_PASS = credentials('dockerhub-credentials')
-        AWS_CREDENTIALS = credentials('aws-credentials')
-        BACKEND_REPO = 'https://github.com/munsif-dev/CoinXcel.git'
-        MYSQL_Credentials = credentials('mysql-credentials')
-        MYSQL_USER = 'root'  // MySQL username
-        MYSQL_PASS = credentials('mysql-root-password')  // MySQL password
-        MYSQL_HOST = '3.84.235.189'                         //credentials('mysql-ec2')  // MySQL host
-    }
-
-    triggers {
-        githubPush()  // Trigger the pipeline on each commit to the backend repository
+        DOCKER_HUB_USER = credentials('dockerhub-credentials')  // DockerHub username
+        DOCKER_HUB_PASS = credentials('dockerhub-credentials')  // DockerHub password
+        AWS_CREDENTIALS = credentials('aws-credentials')  // AWS credentials for EC2
+        COINXCEL_REPO = 'https://github.com/munsif-dev/CoinXcel.git'  // GitHub repository URL
+        MYSQL_Credentials = credentials('mysql-credentials')  // MySQL credentials
+        HOST = '3.84.235.189'  // EC2 instance IP address
     }
 
     stages {
-        stage('Initialize') {
+        stage('Checkout') {
             steps {
-                // Log that the pipeline has started
-                sh 'echo Starting Build'
+                // Checkout your code from GitHub
+                git branch: 'main', url: "${env.COINXCEL_REPO}"
             }
         }
 
-        stage('Clone Repository') {
-            steps {
-                // Clone the backend repository
-                git url: "${BACKEND_REPO}", branch: 'main'
-            }
-        }
-
-        stage('Clean') {
-            steps {
-                // Clean previous builds using Maven
-                sh 'mvn clean'
-            }
-        }
-
-        stage('Compile') {
-            steps {
-                // Compile the backend project using Maven
-                sh 'mvn compile'
-            }
-        }
-
-
-        stage('Package') {
-            steps {
-                // Package the backend application
-                sh 'mvn package'
-            }
-        }
-
-        stage('Build & Push Docker Image') {
+        stage('Set Up MySQL') {
             steps {
                 script {
-                    sh """
-    docker build --build-arg MYSQL_HOST=${MYSQL_HOST} --build-arg MYSQL_USER=${MYSQL_USER} --build-arg MYSQL_PASS=${MYSQL_PASS} -t ${REPO_NAME}/coinxcel-server .
-"""
-                    // Log in to Docker Hub and push the image
-                    sh "docker login -u $DOCKER_HUB_USER -p $DOCKER_HUB_PASS"
-                    sh "docker push ${REPO_NAME}/coinxcel-server"
+                    // Start MySQL service using Docker Compose
+                    sh 'docker-compose -f docker-compose.yml up -d mysql'
                 }
             }
         }
 
-        stage('Provision EC2 Instances with Terraform') {
+        stage('Build and Push Docker Image') {
             steps {
-                // Run Terraform to provision EC2 instances, or update them if already existing
-                sh '''
-                cd terraform
-                terraform init
-                terraform apply -auto-approve
-                '''
+                script {
+                    // Build the Spring Boot app image using docker-compose (from the docker-compose.yml file)
+                    sh 'docker-compose -f docker-compose.yml build springboot'
+
+                    // Login to DockerHub
+                    sh """
+                        echo $DOCKER_HUB_PASS | docker login -u $DOCKER_HUB_USER --password-stdin
+                    """
+
+                    // Push the image to DockerHub
+                    sh 'docker push your-dockerhub-username/springboot-app:latest'
+                }
             }
         }
 
-        stage('Install Docker on EC2 Instances') {
+        stage('Deploy to EC2') {
             steps {
-                // Install Docker on the EC2 instances using Ansible
-                sh '''
-                cd ansible
-                ansible-playbook -i inventory install-docker.yml
-                '''
+                script {
+                    // SSH into your EC2 instance and pull the latest Docker image
+                    sshagent(['aws-credentials']) {
+                        sh '''
+                            ssh -o StrictHostKeyChecking=no ec2-user@${HOST} "docker pull your-dockerhub-username/springboot-app:latest"
+                            ssh -o StrictHostKeyChecking=no ec2-user@${HOST} "docker-compose -f /path/to/docker-compose.yml up -d"
+                        '''
+                    }
+                }
             }
         }
 
-        stage('Deploy to EC2 Instances') {
+        stage('Tear Down MySQL') {
             steps {
-                // Deploy the Spring Boot Docker container to the EC2 instance
-                sh '''
-                cd ansible
-                ansible-playbook -i inventory deploy.yml
-                '''
+                script {
+                    // Shut down MySQL container after the tests
+                    sh 'docker-compose down'
+                }
             }
         }
     }
 
     post {
         success {
-            // Log success message
-            sh 'echo Build succeeded'
+            echo 'Build and deployment were successful!'
         }
-
         failure {
-            // Log failure message
-            sh 'echo Build failed'
-        }
-
-        always {
-            // Cleanup workspace after the build
-            cleanWs()
+            echo 'There was a failure during the build or deployment process.'
         }
     }
 }
