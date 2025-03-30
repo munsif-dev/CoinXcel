@@ -147,10 +147,10 @@ pipeline {
   hosts: coinxcel_servers
   become: yes
   vars:
-    docker_hub_user: "{{ lookup('env', 'DOCKER_HUB_USER') }}"
-    docker_hub_password: "{{ lookup('env', 'DOCKER_HUB_CREDS_PSW') }}"
-    mysql_user: "{{ lookup('env', 'MYSQL_CREDENTIALS_USR') }}"
-    mysql_password: "{{ lookup('env', 'MYSQL_CREDENTIALS_PSW') }}"
+    docker_hub_user: "{{ lookup('env', 'DOCKER_USERNAME') }}"
+    docker_hub_password: "{{ lookup('env', 'DOCKER_PASSWORD') }}"
+    mysql_user: "{{ lookup('env', 'MYSQL_USER') }}"
+    mysql_password: "{{ lookup('env', 'MYSQL_PASSWORD') }}"
   tasks:
     - name: Ensure python3-docker is installed
       apt:
@@ -332,15 +332,12 @@ EOF
                         
                         // Use Ansible to deploy the application with verbose output
                         withEnv([
-                            "DOCKER_HUB_USER=${env.DOCKER_HUB_USER}",
-                            "MYSQL_CREDENTIALS_USR=${env.MYSQL_CREDENTIALS_USR}",
-                            "MYSQL_CREDENTIALS_PSW=${env.MYSQL_CREDENTIALS_PSW}"
+                            "DOCKER_USERNAME=${DOCKER_HUB_USER}",
+                            "DOCKER_PASSWORD=${DOCKER_HUB_CREDS_PSW}",
+                            "MYSQL_USER=${MYSQL_CREDENTIALS_USR}",
+                            "MYSQL_PASSWORD=${MYSQL_CREDENTIALS_PSW}"
                         ]) {
-                            withCredentials([
-                                string(credentialsId: 'dockerhub-credentials', variable: 'DOCKER_HUB_CREDS_PSW')
-                            ]) {
-                                sh 'ANSIBLE_DEBUG=1 ansible-playbook -i ansible/hosts ansible/ec2-deploy.yml -v'
-                            }
+                            sh 'ANSIBLE_DEBUG=1 ansible-playbook -i ansible/hosts ansible/ec2-deploy.yml -v'
                         }
                         
                         // Remove SSH key after deployment
