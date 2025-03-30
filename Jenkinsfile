@@ -14,7 +14,7 @@ pipeline {
         AWS_CREDENTIALS = credentials('aws-credentials')  // AWS credentials for EC2
         COINXCEL_REPO = 'https://github.com/munsif-dev/CoinXcel.git'  // GitHub repository URL
         MYSQL_CREDENTIALS = credentials('mysql-credentials')  // MySQL credentials
-        EC2_HOST = '3.84.235.189'  // EC2 instance IP address
+        EC2_HOST = '172.31.82.187'  // EC2 instance IP address
         SSH_KEY_CREDENTIALS = 'aws-ssh-key'  // Jenkins credential ID for SSH key
     }
 
@@ -33,6 +33,7 @@ pipeline {
 - name: Install Docker and Docker Compose on EC2
   hosts: coinxcel_servers
   become: yes
+  gather_facts: yes
   tasks:
     - name: Update apt cache
       apt:
@@ -46,17 +47,39 @@ pipeline {
           - curl
           - gnupg
           - lsb-release
+          - apt-transport-https
+          - python3-docker
         state: present
+
+    - name: Create keyrings directory
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
 
     - name: Add Docker GPG key
-      apt_key:
-        url: https://download.docker.com/linux/ubuntu/gpg
-        state: present
+      block:
+        - name: Download Docker GPG key
+          get_url:
+            url: https://download.docker.com/linux/ubuntu/gpg
+            dest: /tmp/docker-archive-keyring.gpg
+            mode: '0644'
+            
+        - name: Dearmor GPG key
+          shell: gpg --dearmor < /tmp/docker-archive-keyring.gpg > /etc/apt/keyrings/docker.gpg
+          args:
+            creates: /etc/apt/keyrings/docker.gpg
+            
+        - name: Set permissions on key
+          file:
+            path: /etc/apt/keyrings/docker.gpg
+            mode: '0644'
 
-    - name: Add Docker repository
+    - name: Set up the repository
       apt_repository:
-        repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable
+        repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
         state: present
+        filename: docker
 
     - name: Install Docker Engine
       apt:
@@ -64,14 +87,24 @@ pipeline {
           - docker-ce
           - docker-ce-cli
           - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
         state: present
         update_cache: yes
 
-    - name: Install Docker Compose
+    - name: Install Docker Compose standalone
       get_url:
-        url: https://github.com/docker/compose/releases/download/v2.18.1/docker-compose-linux-x86_64
+        url: https://github.com/docker/compose/releases/download/v2.24.1/docker-compose-linux-x86_64
         dest: /usr/local/bin/docker-compose
         mode: '0755'
+      register: compose_download
+      
+    - name: Create symbolic link for Docker Compose
+      file:
+        src: /usr/local/bin/docker-compose
+        dest: /usr/bin/docker-compose
+        state: link
+      when: compose_download.changed
 
     - name: Create docker group
       group:
@@ -89,6 +122,24 @@ pipeline {
         name: docker
         state: started
         enabled: yes
+        
+    - name: Verify Docker installation
+      command: docker --version
+      register: docker_version
+      changed_when: false
+      
+    - name: Display Docker version
+      debug:
+        var: docker_version.stdout
+        
+    - name: Verify Docker Compose installation
+      command: docker-compose --version
+      register: compose_version
+      changed_when: false
+      
+    - name: Display Docker Compose version
+      debug:
+        var: compose_version.stdout
 '''
 
                 writeFile file: 'ansible/deploy-app.yml', text: '''
@@ -102,6 +153,12 @@ pipeline {
     mysql_user: "{{ lookup('env', 'MYSQL_CREDENTIALS_USR') }}"
     mysql_password: "{{ lookup('env', 'MYSQL_CREDENTIALS_PSW') }}"
   tasks:
+    - name: Ensure python3-docker is installed
+      apt:
+        name: python3-docker
+        state: present
+        update_cache: yes
+      
     - name: Create app directory
       file:
         path: /home/ubuntu/coinxcel
@@ -117,38 +174,76 @@ pipeline {
         owner: ubuntu
         group: ubuntu
         mode: '0644'
+        
+    - name: Copy Dockerfile
+      copy:
+        src: ../Dockerfile
+        dest: /home/ubuntu/coinxcel/Dockerfile
+        owner: ubuntu
+        group: ubuntu
+        mode: '0644'
 
     - name: Login to Docker Hub
-      command: docker login -u {{ docker_hub_user }} -p {{ docker_hub_password }}
+      shell: echo "{{ docker_hub_password }}" | docker login -u {{ docker_hub_user }} --password-stdin
       become: yes
       become_user: ubuntu
       no_log: true
+      register: login_result
+      
+    - name: Display Docker login result
+      debug:
+        msg: "Docker login successful"
+      when: login_result.rc == 0
+      
+    - name: Display Docker login failure
+      fail:
+        msg: "Docker login failed"
+      when: login_result.rc != 0
 
     - name: Pull latest Docker images
       command: docker pull {{ docker_hub_user }}/springboot-app:latest
       become: yes
       become_user: ubuntu
+      register: pull_result
+      retries: 3
+      delay: 5
+      until: pull_result.rc == 0
+      
+    - name: Display pull result
+      debug:
+        var: pull_result.stdout_lines
 
     - name: Stop existing containers
-      command: docker-compose -f /home/ubuntu/coinxcel/docker-compose.yml down
+      shell: cd /home/ubuntu/coinxcel && docker-compose down --remove-orphans
+      become: yes
+      become_user: ubuntu
+      ignore_errors: yes
+      
+    - name: Prune docker resources if needed
+      shell: docker system prune -f
       become: yes
       become_user: ubuntu
       ignore_errors: yes
 
     - name: Start application with docker-compose
-      command: docker-compose -f /home/ubuntu/coinxcel/docker-compose.yml up -d
+      shell: cd /home/ubuntu/coinxcel && docker-compose up -d
       become: yes
       become_user: ubuntu
       environment:
         MYSQL_USER: "{{ mysql_user }}"
         MYSQL_PASSWORD: "{{ mysql_password }}"
+      register: compose_up
+      
+    - name: Display docker-compose up result
+      debug:
+        var: compose_up.stdout_lines
 
     - name: Wait for application to start
       pause:
         seconds: 30
 
     - name: Check container status
-      command: docker ps
+      shell: docker ps -a
       become: yes
       become_user: ubuntu
       register: container_status
@@ -156,11 +251,42 @@ pipeline {
     - name: Display container status
       debug:
         var: container_status.stdout_lines
+        
+    - name: Verify MySQL container is running
+      shell: docker ps | grep mysql-server
+      become: yes
+      become_user: ubuntu
+      register: mysql_running
+      failed_when: mysql_running.rc != 0
+      
+    - name: Verify SpringBoot container is running
+      shell: docker ps | grep springboot-app
+      become: yes
+      become_user: ubuntu
+      register: springboot_running
+      failed_when: springboot_running.rc != 0
+      
+    - name: Check application logs if running
+      shell: docker logs springboot-app --tail 50
+      become: yes
+      become_user: ubuntu
+      register: app_logs
+      when: springboot_running.rc == 0
+      
+    - name: Display application logs
+      debug:
+        var: app_logs.stdout_lines
+      when: app_logs is defined
 '''
 
                 writeFile file: 'ansible/hosts', text: '''
 [coinxcel_servers]
-${EC2_HOST} ansible_user=ubuntu ansible_ssh_private_key_file=/tmp/ec2_key.pem ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+${EC2_HOST} ansible_user=ubuntu ansible_ssh_private_key_file=/tmp/ec2_key.pem ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o IdentitiesOnly=yes'
+
+[coinxcel_servers:vars]
+ansible_python_interpreter=/usr/bin/python3
+ansible_become=yes
+ansible_become_method=sudo
 '''
             }
         }
@@ -203,16 +329,19 @@ ${EC2_HOST} ansible_user=ubuntu ansible_ssh_private_key_file=/tmp/ec2_key.pem an
         stage('Deploy to EC2') {
             steps {
                 script {
+                    // Ensure Python Docker module is installed
+                    sh 'which python3-docker || sudo apt-get update && sudo apt-get install -y python3-docker'
+                    
                     // Copy SSH key to a temporary location
                     withCredentials([sshUserPrivateKey(credentialsId: env.SSH_KEY_CREDENTIALS, keyFileVariable: 'SSH_KEY')]) {
                         sh 'mkdir -p /tmp'
                         sh 'cp $SSH_KEY /tmp/ec2_key.pem'
                         sh 'chmod 600 /tmp/ec2_key.pem'
                         
-                        // Use Ansible to install Docker
-                        sh 'ansible-playbook -i ansible/hosts ansible/install-docker.yml'
+                        // Use Ansible to install Docker with verbose output for debugging
+                        sh 'ANSIBLE_DEBUG=1 ansible-playbook -i ansible/hosts ansible/install-docker.yml -v'
                         
-                        // Use Ansible to deploy the application
+                        // Use Ansible to deploy the application with verbose output
                         withEnv([
                             "DOCKER_HUB_USER=${env.DOCKER_HUB_USER}",
                             "MYSQL_CREDENTIALS_USR=${env.MYSQL_CREDENTIALS_USR}",
@@ -221,7 +350,7 @@ ${EC2_HOST} ansible_user=ubuntu ansible_ssh_private_key_file=/tmp/ec2_key.pem an
                             withCredentials([
                                 string(credentialsId: 'dockerhub-credentials', variable: 'DOCKER_HUB_CREDS_PSW')
                             ]) {
-                                sh 'ansible-playbook -i ansible/hosts ansible/deploy-app.yml'
+                                sh 'ANSIBLE_DEBUG=1 ansible-playbook -i ansible/hosts ansible/deploy-app.yml -v'
                             }
                         }
                         
