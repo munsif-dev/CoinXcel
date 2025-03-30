@@ -13,7 +13,7 @@ pipeline {
         AWS_CREDENTIALS = credentials('aws-credentials')  // AWS credentials for EC2
         COINXCEL_REPO = 'https://github.com/munsif-dev/CoinXcel.git'  // GitHub repository URL
         MYSQL_CREDENTIALS = credentials('mysql-credentials')  // MySQL credentials
-        EC2_HOST = '54.90.69.239'  // EC2 instance IP address
+        EC2_HOST = '3.84.235.189'  // EC2 instance IP address
         SSH_KEY_CREDENTIALS = 'aws-ssh-key'  // Jenkins credential ID for SSH key
     }
 
@@ -283,7 +283,10 @@ pipeline {
       when: app_logs is defined
 '''
 
-                writeFile file: 'ansible/hosts', text: '''
+                // Create ansible hosts file using environment variable interpolation
+                sh '''
+                    mkdir -p ansible
+                    cat > ansible/hosts << EOF
 [coinxcel_servers]
 ${EC2_HOST} ansible_user=ubuntu ansible_ssh_private_key_file=/tmp/ec2_key.pem ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o IdentitiesOnly=yes'
 
@@ -291,7 +294,8 @@ ${EC2_HOST} ansible_user=ubuntu ansible_ssh_private_key_file=/tmp/ec2_key.pem an
 ansible_python_interpreter=/usr/bin/python3
 ansible_become=yes
 ansible_become_method=sudo
-'''
+EOF
+                '''
             }
         }
 
@@ -305,14 +309,23 @@ ansible_become_method=sudo
         stage('Deploy to EC2') {
             steps {
                 script {
-                    // Ensure Python Docker module is installed
-                    sh 'which python3-docker || sudo apt-get update && sudo apt-get install -y python3-docker'
+                    // Debug EC2 host information
+                    sh 'echo "EC2_HOST value: $EC2_HOST"'
                     
                     // Copy SSH key to a temporary location
                     withCredentials([sshUserPrivateKey(credentialsId: env.SSH_KEY_CREDENTIALS, keyFileVariable: 'SSH_KEY')]) {
                         sh 'mkdir -p /tmp'
                         sh 'cp $SSH_KEY /tmp/ec2_key.pem'
                         sh 'chmod 600 /tmp/ec2_key.pem'
+                        
+                        // Verify the hosts file content after creation
+                        sh 'cat ansible/hosts'
+                        
+                        // Test SSH connectivity to EC2 instance
+                        sh '''
+                            echo "Testing SSH connectivity to $EC2_HOST..."
+                            ssh -i /tmp/ec2_key.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@$EC2_HOST 'echo "SSH connection successful"'
+                        '''
                         
                         // Use Ansible to install Docker with verbose output for debugging
                         sh 'ANSIBLE_DEBUG=1 ansible-playbook -i ansible/hosts ansible/install-docker.yml -v'
