@@ -8,13 +8,12 @@ pipeline {
 
     environment {
         JAVA_HOME = "${tool 'JDK'}"  // Set JAVA_HOME to the JDK tool
-                
         DOCKER_HUB_USER = 'munsifahamed' // DockerHub username
         DOCKER_HUB_CREDS = credentials('dockerhub-credentials')  // DockerHub credentials
         AWS_CREDENTIALS = credentials('aws-credentials')  // AWS credentials for EC2
         COINXCEL_REPO = 'https://github.com/munsif-dev/CoinXcel.git'  // GitHub repository URL
         MYSQL_CREDENTIALS = credentials('mysql-credentials')  // MySQL credentials
-        EC2_HOST = '172.31.82.187'  // EC2 instance IP address
+        EC2_HOST = '3.84.235.189'  // EC2 instance IP address
         SSH_KEY_CREDENTIALS = 'aws-ssh-key'  // Jenkins credential ID for SSH key
     }
 
@@ -142,9 +141,9 @@ pipeline {
         var: compose_version.stdout
 '''
 
-                writeFile file: 'ansible/deploy-app.yml', text: '''
+                writeFile file: 'ansible/ec2-deploy.yml', text: '''
 ---
-- name: Deploy CoinXcel Application
+- name: Deploy CoinXcel Application to EC2
   hosts: coinxcel_servers
   become: yes
   vars:
@@ -166,6 +165,14 @@ pipeline {
         owner: ubuntu
         group: ubuntu
         mode: '0755'
+
+    - name: Copy application JAR file
+      copy:
+        src: ../target/CoinXcel-0.0.1-SNAPSHOT.jar
+        dest: /home/ubuntu/coinxcel/CoinXcel.jar
+        owner: ubuntu
+        group: ubuntu
+        mode: '0644'
 
     - name: Copy docker-compose file
       copy:
@@ -200,21 +207,8 @@ pipeline {
         msg: "Docker login failed"
       when: login_result.rc != 0
 
-    - name: Pull latest Docker images
-      command: docker pull {{ docker_hub_user }}/springboot-app:latest
-      become: yes
-      become_user: ubuntu
-      register: pull_result
-      retries: 3
-      delay: 5
-      until: pull_result.rc == 0
-      
-    - name: Display pull result
-      debug:
-        var: pull_result.stdout_lines
-
     - name: Stop existing containers
-      shell: cd /home/ubuntu/coinxcel && docker-compose down --remove-orphans
+      shell: cd /home/ubuntu/coinxcel && docker-compose down --remove-orphans || true
       become: yes
       become_user: ubuntu
       ignore_errors: yes
@@ -224,6 +218,16 @@ pipeline {
       become: yes
       become_user: ubuntu
       ignore_errors: yes
+
+    - name: Build Docker image on EC2
+      shell: cd /home/ubuntu/coinxcel && docker-compose build
+      become: yes
+      become_user: ubuntu
+      register: build_result
+      
+    - name: Display build result
+      debug:
+        var: build_result.stdout_lines
 
     - name: Start application with docker-compose
       shell: cd /home/ubuntu/coinxcel && docker-compose up -d
@@ -298,34 +302,6 @@ ansible_become_method=sudo
             }
         }
 
-        stage('Set Up MySQL') {
-            steps {
-                script {
-                    // Start MySQL service using Docker Compose
-                    sh 'docker-compose -f docker-compose.yml up -d mysql'
-                }
-            }
-        }
-
-        stage('Build and Push Docker Image') {
-            steps {
-                script {
-                    // Build the Spring Boot app image using docker-compose
-                    sh 'docker-compose -f docker-compose.yml build springboot'
-
-                    // Securely login to DockerHub using credentials stored in Jenkins
-                    withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_HUB_USER', passwordVariable: 'DOCKER_HUB_PASS')]) {
-                        sh '''
-                            echo $DOCKER_HUB_PASS | docker login -u $DOCKER_HUB_USER --password-stdin
-                        '''
-                    }
-
-                    // Push the image to DockerHub
-                    sh 'docker push $DOCKER_HUB_USER/springboot-app:latest'
-                }
-            }
-        }
-
         stage('Deploy to EC2') {
             steps {
                 script {
@@ -350,22 +326,13 @@ ansible_become_method=sudo
                             withCredentials([
                                 string(credentialsId: 'dockerhub-credentials', variable: 'DOCKER_HUB_CREDS_PSW')
                             ]) {
-                                sh 'ANSIBLE_DEBUG=1 ansible-playbook -i ansible/hosts ansible/deploy-app.yml -v'
+                                sh 'ANSIBLE_DEBUG=1 ansible-playbook -i ansible/hosts ansible/ec2-deploy.yml -v'
                             }
                         }
                         
                         // Remove SSH key after deployment
                         sh 'rm -f /tmp/ec2_key.pem'
                     }
-                }
-            }
-        }
-
-        stage('Tear Down Local MySQL') {
-            steps {
-                script {
-                    // Shut down MySQL container after the tests
-                    sh 'docker-compose -f docker-compose.yml down'
                 }
             }
         }
@@ -380,10 +347,6 @@ ansible_become_method=sudo
         }
         always {
             script {
-                // Clean up Docker resources
-                sh 'docker logout || true'
-                sh 'docker system prune -f || true'
-                
                 // Clean workspace
                 cleanWs()
             }
