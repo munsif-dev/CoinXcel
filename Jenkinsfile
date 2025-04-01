@@ -196,22 +196,58 @@ pipeline {
         group: ubuntu
         mode: '0644'
 
-    - name: Login to Docker Hub
-      shell: echo "{{ docker_hub_password }}" | docker login -u {{ docker_hub_user }} --password-stdin
-      become: yes
-      become_user: ubuntu
-      no_log: true
-      register: login_result
-      
-    - name: Display Docker login result
-      debug:
-        msg: "Docker login successful"
-      when: login_result.rc == 0
-      
-    - name: Display Docker login failure
-      fail:
-        msg: "Docker login failed"
-      when: login_result.rc != 0
+    - name: Create custom docker-compose.yml file
+      copy:
+        content: |
+          version: "3.8"
+
+          services:
+            mysql:
+              image: mysql:8.0
+              container_name: mysql-server
+              environment:
+                MYSQL_ROOT_PASSWORD: rootpassword
+                MYSQL_DATABASE: coinxcel
+                MYSQL_USER: "{{ mysql_user }}"
+                MYSQL_PASSWORD: "{{ mysql_password }}"
+              ports:
+                - "3307:3306"
+              volumes:
+                - mysql-data:/var/lib/mysql
+              networks:
+                - coinxcel-net
+              restart: always
+              healthcheck:
+                test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+                timeout: 20s
+                retries: 10
+
+            springboot:
+              image: {{ docker_hub_user }}/springboot-app:latest
+              container_name: springboot-app
+              ports:
+                - "8080:8080"
+              environment:
+                SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/coinxcel?allowPublicKeyRetrieval=true&useSSL=false&createDatabaseIfNotExist=true
+                SPRING_DATASOURCE_USERNAME: "{{ mysql_user }}"
+                SPRING_DATASOURCE_PASSWORD: "{{ mysql_password }}"
+              depends_on:
+                mysql:
+                  condition: service_healthy
+              networks:
+                - coinxcel-net
+              restart: always
+
+          networks:
+            coinxcel-net:
+              driver: bridge
+
+          volumes:
+            mysql-data:
+        dest: /home/ubuntu/coinxcel/docker-compose.yml
+        owner: ubuntu
+        group: ubuntu
+        mode: '0644'
 
     - name: Stop existing containers
       shell: cd /home/ubuntu/coinxcel && docker-compose down --remove-orphans || true
@@ -235,73 +271,17 @@ pipeline {
       debug:
         var: build_result.stdout_lines
 
-    - name: Create custom docker-compose.yml file
-      copy:
-        content: |
-          version: "3.8"
-
-          services:
-            mysql:
-              image: mysql:8.0
-              container_name: mysql-server
-              environment:
-                MYSQL_ROOT_PASSWORD: rootpassword
-                MYSQL_DATABASE: coinxcel
-                MYSQL_USER: {{ mysql_user }}
-                MYSQL_PASSWORD: {{ mysql_password }}
-              ports:
-                - "3307:3306"
-              volumes:
-                - mysql-data:/var/lib/mysql
-              networks:
-                - coinxcel-net
-
-            springboot:
-              image: {{ docker_hub_user }}/springboot-app:latest
-              container_name: springboot-app
-              ports:
-                - "8080:8080"
-              environment:
-                SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/coinxcel
-                SPRING_DATASOURCE_USERNAME: {{ mysql_user }}
-                SPRING_DATASOURCE_PASSWORD: {{ mysql_password }}
-              depends_on:
-                - mysql
-              networks:
-                - coinxcel-net
-
-          networks:
-            coinxcel-net:
-              driver: bridge
-
-          volumes:
-            mysql-data:
-        dest: /home/ubuntu/coinxcel/docker-compose.yml
-        owner: ubuntu
-        group: ubuntu
-        mode: '0644'
-
-    - name: Start application with docker-compose
-      shell: cd /home/ubuntu/coinxcel && docker-compose up -d
+    - name: Start MySQL container first
+      shell: cd /home/ubuntu/coinxcel && docker-compose up -d mysql
       become: yes
       become_user: ubuntu
-      register: compose_up
+      register: mysql_start
       
-    - name: Display docker-compose up result
+    - name: Display MySQL start result
       debug:
-        var: compose_up.stdout_lines
-
-    - name: Debug docker-compose.yml content
-      shell: cat /home/ubuntu/coinxcel/docker-compose.yml
-      become: yes
-      become_user: ubuntu
-      register: compose_file
-      
-    - name: Display docker-compose.yml content
-      debug:
-        var: compose_file.stdout_lines
-
-    - name: Wait for containers to start
+        var: mysql_start.stdout_lines
+        
+    - name: Wait for MySQL to be ready
       pause:
         seconds: 30
 
@@ -315,18 +295,8 @@ pipeline {
       debug:
         var: container_status.stdout_lines
 
-    - name: Check for exited containers
-      shell: docker ps -a --filter "status=exited" --format "{{.Names}}"
-      become: yes
-      become_user: ubuntu
-      register: exited_containers
-      
-    - name: Display exited containers
-      debug:
-        var: exited_containers.stdout_lines
-
-    - name: Check docker logs for MySQL
-      shell: docker logs mysql-server 2>&1 || echo "No MySQL logs available"
+    - name: Check for MySQL logs
+      shell: docker logs mysql-server
       become: yes
       become_user: ubuntu
       register: mysql_logs
@@ -335,50 +305,34 @@ pipeline {
     - name: Display MySQL logs
       debug:
         var: mysql_logs.stdout_lines
-
-    - name: Attempt to restart MySQL if it failed
-      shell: docker restart mysql-server
-      become: yes
-      become_user: ubuntu
-      when: "'mysql-server' in exited_containers.stdout"
-      ignore_errors: yes
-
-    - name: Wait after potential restart
-      pause:
-        seconds: 30
-      when: "'mysql-server' in exited_containers.stdout"
-
-    - name: Verify MySQL container is running (informational only)
-      shell: docker ps | grep mysql-server || echo "MySQL container not running"
-      become: yes
-      become_user: ubuntu
-      register: mysql_running
-      ignore_errors: yes
-      
-    - name: Check MySQL container status
-      debug:
-        msg: "MySQL container is {{ 'RUNNING' if mysql_running.rc == 0 else 'NOT RUNNING' }}"
-
-    - name: Attempt to start SpringBoot container
+        
+    - name: Start SpringBoot container
       shell: cd /home/ubuntu/coinxcel && docker-compose up -d springboot
       become: yes
       become_user: ubuntu
-      when: mysql_running.rc == 0
-      ignore_errors: yes
-
-    - name: Verify SpringBoot container is running (informational only)
-      shell: docker ps | grep springboot-app || echo "SpringBoot container not running"
-      become: yes
-      become_user: ubuntu
-      register: springboot_running
+      register: springboot_start
       ignore_errors: yes
       
-    - name: Check SpringBoot container status
+    - name: Display SpringBoot start result
       debug:
-        msg: "SpringBoot container is {{ 'RUNNING' if springboot_running.rc == 0 else 'NOT RUNNING' }}"
+        var: springboot_start.stdout_lines
+        
+    - name: Wait for application to start
+      pause:
+        seconds: 20
 
-    - name: Check application logs if running
-      shell: docker logs springboot-app --tail 50 || echo "No SpringBoot logs available"
+    - name: Check final container status
+      shell: docker ps -a
+      become: yes
+      become_user: ubuntu
+      register: final_status
+
+    - name: Display final container status
+      debug:
+        var: final_status.stdout_lines
+        
+    - name: Check application logs
+      shell: docker logs springboot-app
       become: yes
       become_user: ubuntu
       register: app_logs
