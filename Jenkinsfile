@@ -13,7 +13,7 @@ pipeline {
         AWS_CREDENTIALS = credentials('aws-credentials')  // AWS credentials for EC2
         COINXCEL_REPO = 'https://github.com/munsif-dev/CoinXcel.git'  // GitHub repository URL
         MYSQL_CREDENTIALS = credentials('mysql-credentials')  // MySQL credentials
-        EC2_HOST = '3.87.199.126'  // EC2 instance IP address
+        EC2_HOST = '44.201.142.5'  // EC2 instance IP address
         SSH_KEY_CREDENTIALS = 'aws-ssh-key'  // Jenkins credential ID for SSH key
     }
 
