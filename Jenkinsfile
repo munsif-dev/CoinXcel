@@ -231,6 +231,10 @@ pipeline {
                 SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/coinxcel?allowPublicKeyRetrieval=true&useSSL=false&createDatabaseIfNotExist=true
                 SPRING_DATASOURCE_USERNAME: "{{ mysql_user }}"
                 SPRING_DATASOURCE_PASSWORD: "{{ mysql_password }}"
+                SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: org.hibernate.dialect.MySQLDialect
+                SPRING_JPA_HIBERNATE_DDL-AUTO: update
+              volumes:
+                - ./application.properties:/app/application.properties
               depends_on:
                 mysql:
                   condition: service_healthy
