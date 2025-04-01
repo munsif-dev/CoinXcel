@@ -272,7 +272,7 @@ pipeline {
         var: build_result.stdout_lines
 
     - name: Start MySQL container first
-      shell: cd /home/ubuntu/coinxcel && docker-compose up -d mysql
+      shell: cd /home/ubuntu/coinxcel && sudo docker-compose up -d mysql
       become: yes
       become_user: ubuntu
       register: mysql_start
