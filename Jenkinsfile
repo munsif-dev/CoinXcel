@@ -173,18 +173,24 @@ pipeline {
         owner: ubuntu
         group: ubuntu
         mode: '0644'
-
-    - name: Copy docker-compose file
-      copy:
-        src: ../docker-compose.yml
-        dest: /home/ubuntu/coinxcel/docker-compose.yml
-        owner: ubuntu
-        group: ubuntu
-        mode: '0644'
         
-    - name: Copy Dockerfile
+    - name: Copy simplified Dockerfile
       copy:
-        src: ../Dockerfile
+        content: |
+          # Use a smaller base image to run the application
+          FROM openjdk:17-jdk-slim
+
+          # Set the working directory inside the container
+          WORKDIR /app
+
+          # Copy the pre-built JAR file
+          COPY CoinXcel.jar /app/CoinXcel.jar
+
+          # Expose the port on which your Spring Boot app will run (default is 8080)
+          EXPOSE 8080
+
+          # Command to run the application
+          ENTRYPOINT ["java", "-jar", "/app/CoinXcel.jar"]
         dest: /home/ubuntu/coinxcel/Dockerfile
         owner: ubuntu
         group: ubuntu
@@ -220,7 +226,7 @@ pipeline {
       ignore_errors: yes
 
     - name: Build Docker image on EC2
-      shell: cd /home/ubuntu/coinxcel && docker-compose build
+      shell: cd /home/ubuntu/coinxcel && docker build -t {{ docker_hub_user }}/springboot-app:latest .
       become: yes
       become_user: ubuntu
       register: build_result
@@ -229,13 +235,56 @@ pipeline {
       debug:
         var: build_result.stdout_lines
 
+    - name: Create custom docker-compose.yml file
+      copy:
+        content: |
+          version: "3.8"
+
+          services:
+            mysql:
+              image: mysql:8.0
+              container_name: mysql-server
+              environment:
+                MYSQL_ROOT_PASSWORD: rootpassword
+                MYSQL_DATABASE: coinxcel
+                MYSQL_USER: {{ mysql_user }}
+                MYSQL_PASSWORD: {{ mysql_password }}
+              ports:
+                - "3307:3306"
+              volumes:
+                - mysql-data:/var/lib/mysql
+              networks:
+                - coinxcel-net
+
+            springboot:
+              image: {{ docker_hub_user }}/springboot-app:latest
+              container_name: springboot-app
+              ports:
+                - "8080:8080"
+              environment:
+                SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/coinxcel
+                SPRING_DATASOURCE_USERNAME: {{ mysql_user }}
+                SPRING_DATASOURCE_PASSWORD: {{ mysql_password }}
+              depends_on:
+                - mysql
+              networks:
+                - coinxcel-net
+
+          networks:
+            coinxcel-net:
+              driver: bridge
+
+          volumes:
+            mysql-data:
+        dest: /home/ubuntu/coinxcel/docker-compose.yml
+        owner: ubuntu
+        group: ubuntu
+        mode: '0644'
+
     - name: Start application with docker-compose
       shell: cd /home/ubuntu/coinxcel && docker-compose up -d
       become: yes
       become_user: ubuntu
-      environment:
-        MYSQL_USER: "{{ mysql_user }}"
-        MYSQL_PASSWORD: "{{ mysql_password }}"
       register: compose_up
       
     - name: Display docker-compose up result
