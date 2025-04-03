@@ -6,6 +6,14 @@ pipeline {
         jdk 'JDK'   // JDK tool name configured in Jenkins
     }
 
+    triggers {
+              
+        // Add webhook trigger for GitHub repository
+        githubPush()
+    }
+
+
+
     environment {
         JAVA_HOME = "${tool 'JDK'}"  // Set JAVA_HOME to the JDK tool
         DOCKER_HUB_USER = 'munsifahamed' // DockerHub username
